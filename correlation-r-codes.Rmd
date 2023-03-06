@@ -1,0 +1,161 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(GGally)
+library(leaps)
+library(car)
+library(tidymodels)
+library(knitr)
+library(gapminder)
+library(ggplot2)
+library(ggfortify)
+```
+
+
+```{r}
+# access the happiness data
+happiness <- read.csv("Happiness2019.csv") %>%
+  rename(Country = Country) %>%
+  select(Country, Happiness_score)
+
+glimpse(happiness)
+```
+
+
+```{r}
+# access the hdi data
+hdi <- read.csv("HDI2019.csv") %>%
+  rename(Country = Country) %>%
+  select(Country, Life_expectancy, Expected_schooling, Mean_schooling, GNI_per)
+
+glimpse(hdi)
+```
+
+
+
+```{r}
+# We merge all the data together using an `inner_join` statement, so only countries in both data files are retained
+full_data <- happiness %>% 
+  inner_join(., hdi, by = "Country") %>%
+  
+  drop_na()
+
+glimpse(full_data)
+```
+
+
+```{r}
+ggpairs(full_data, columns = c(3, 4, 5, 6, 2))
+```
+
+
+```{r}
+# histogram for Happiness_score
+hist(full_data$Happiness_score)
+
+# histogram for Life_expectancy
+hist(full_data$Life_expectancy)
+
+# histogram for Expected_schooling
+hist(full_data$Expected_schooling)
+
+# histogram for Mean_schooling
+hist(full_data$Mean_schooling)
+
+# histogram for GNI_per
+hist(full_data$GNI_per)
+```
+
+
+```{r}
+# create a MR model
+full_model <- lm(Happiness_score ~ Life_expectancy + Expected_schooling + Mean_schooling + GNI_per, data = full_data)
+
+summary(full_model)
+```
+
+
+```{r}
+# obtain and show the residuals
+resid <- residuals(full_model)
+resid
+
+# boxplot of the residuals
+boxplot(resid) 
+```
+
+
+```{r}
+# check the assumptions
+autoplot(full_model)
+```
+
+
+```{r}
+# create added variable plots
+avPlots(full_model, ask=FALSE, id.method = "identify")
+```
+
+
+```{r}
+# obtain 95% Bonferroni joint confidence interval
+confint(full_model, level = 1 - (1-0.95)/4)
+```
+
+
+```{r, echo = FALSE}
+# obtain the R^2 value
+summary(full_model)$r.squared
+```
+
+```{r}
+anova(full_model)
+```
+
+
+```{r}
+# fit a null model
+null_model <- lm(Happiness_score ~ 1, data = full_data)
+```
+
+
+```{r}
+forward_AIC <- stats::step(null_model, scope = formula(full_model), direction = "forward", trace = FALSE, k = 2)
+
+summary(forward_AIC)
+```
+
+
+```{r}
+backward_AIC <- stats::step(full_model, direction = "backward", trace = FALSE, k = 2)
+
+summary(backward_AIC)
+```
+
+
+```{r}
+forward_BIC <- stats::step(null_model, scope = formula(full_model), direction = "forward", trace = FALSE, k = log(nrow(full_data)))
+
+summary(forward_BIC)
+```
+
+
+```{r}
+backward_BIC <- stats::step(full_model, direction = "backward", trace = FALSE, k = log(nrow(full_data)))
+
+summary(backward_BIC)
+```
+
+
+
+```{r}
+bind_rows(
+  glance(full_model) %>% mutate(Model = "Happiness_score ~ Life_expectancy + Expected_schooling + Mean_schooling + GNI_per"),
+  glance(forward_AIC) %>% mutate(Model = "Happiness_score ~ Life_expectancy + Expected_schooling + GNI_per"),
+  glance(forward_BIC) %>% mutate(Model = "Happiness_score ~ Life_expectancy + GNI_per")) %>%
+  
+  select(Model, AIC, BIC, Adj.R.squared = adj.r.squared) %>%
+  
+  kable()
+```
